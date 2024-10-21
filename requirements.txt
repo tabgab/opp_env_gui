@@ -1,0 +1,2 @@
+# This file is intentionally left empty as the application now uses Tkinter,
+# which is included in Python's standard library and doesn't require additional dependencies.
