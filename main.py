@@ -99,7 +99,8 @@ class OppEnvGUI:
                 elif tool == 'inet':
                     inet_versions = versions
                 else:
-                    other_tools.append(tool)
+                    for version in versions:
+                        other_tools.append(f"{tool}-{version}")
             
             logging.info(f"Categorized versions: omnetpp={omnetpp_versions}, inet={inet_versions}, other={other_tools}")
             
@@ -168,7 +169,11 @@ class OppEnvGUI:
                 elif line.startswith('- inet:'):
                     inet_versions = line.split(':')[1].strip().split(' / ')
                 elif line.startswith('- '):
-                    other_tools.append(line.split(':')[0].strip('- '))
+                    tool_info = line.split(':')
+                    tool = tool_info[0].strip('- ')
+                    versions = tool_info[1].strip().split(' / ')
+                    for version in versions:
+                        other_tools.append(f"{tool}-{version}")
             
             return {
                 'omnetpp': omnetpp_versions,
