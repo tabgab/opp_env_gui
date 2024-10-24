@@ -6,7 +6,7 @@ import os
 import sys
 import threading
 import queue
-import time
+import re
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s: %(message)s')
 
@@ -14,7 +14,7 @@ class OppEnvGUI:
     def __init__(self, master):
         self.master = master
         master.title("OPP_ENV_GUI")
-        master.geometry("600x400")
+        master.geometry("600x450")
 
         # OMNeT++ version dropdown
         ttk.Label(master, text="OMNeT++ Version:").pack(pady=5)
@@ -39,13 +39,19 @@ class OppEnvGUI:
         self.dir_button = ttk.Button(self.dir_frame, text="Browse", command=self.browse_directory)
         self.dir_button.pack(side=tk.LEFT)
 
+        # Button frame
+        self.button_frame = ttk.Frame(master)
+        self.button_frame.pack(pady=10)
+
         # Install button
-        self.install_button = tk.Button(master, text="INSTALL SELECTED", command=self.install_selected, state=tk.DISABLED)
-        self.install_button.pack(pady=10)
+        self.install_button = tk.Button(self.button_frame, text="INSTALL SELECTED", command=self.install_selected, state=tk.NORMAL)
+        self.install_button.pack(side=tk.LEFT, padx=5)
+
+        # Reset button
+        self.reset_button = tk.Button(self.button_frame, text="RESET", command=self.reset_dropdowns)
+        self.reset_button.pack(side=tk.LEFT, padx=5)
 
         self.install_dir = ""
-        self.last_click_time = 0
-        self.click_cooldown = 0.5  # 500ms cooldown between clicks
         self.queue = queue.Queue()
 
         # Bind events
@@ -67,30 +73,28 @@ class OppEnvGUI:
                     combo, values = task[1], task[2]
                     combo['values'] = values
                     if values:
-                        combo.set(values[0])
-                elif task[0] == "enable_install_button":
-                    self.install_button['state'] = tk.NORMAL
-                    self.install_button.config(bg='green', fg='white')
-                elif task[0] == "disable_install_button":
-                    self.install_button['state'] = tk.DISABLED
-                    self.install_button.config(bg='gray', fg='white')
+                        if combo == self.omnetpp_combo:
+                            combo.set(self.get_latest_version(values))
+                        else:
+                            combo.set("NONE")
         except queue.Empty:
             pass
         finally:
             self.master.after(100, self.update_gui)  # Schedule next update
 
-    def browse_directory(self):
-        current_time = time.time()
-        if current_time - self.last_click_time < self.click_cooldown:
-            logging.info("Click ignored due to cooldown")
-            return
-        self.last_click_time = current_time
+    def get_latest_version(self, versions):
+        def version_key(v):
+            parts = re.findall(r'\d+', v)
+            return tuple(map(int, parts)) if parts else (-1,)
 
+        return max(versions, key=version_key)
+
+    def browse_directory(self):
+        logging.info("Browse directory button clicked")
         dir_path = filedialog.askdirectory()
         if dir_path:
             self.install_dir = dir_path
             self.dir_label.config(text=f"Install Directory: {dir_path}")
-            self.check_install_button()
 
     def populate_dropdowns(self):
         options = self.get_opp_env_options()
@@ -120,7 +124,7 @@ class OppEnvGUI:
                 if len(parts) < 2:
                     continue
                 tool = parts[0]
-                versions = parts[1:]
+                versions = [v for v in parts[1:] if v != 'git']
                 if tool == 'omnetpp':
                     omnetpp_versions = versions
                 elif tool == 'inet':
@@ -142,14 +146,8 @@ class OppEnvGUI:
             return {'omnetpp': [], 'inet': [], 'other_tools': []}
 
     def handle_combo_selection(self, event):
-        current_time = time.time()
-        if current_time - self.last_click_time < self.click_cooldown:
-            logging.info("Click ignored due to cooldown")
-            return
-        self.last_click_time = current_time
-
-        sender = event.widget
-        threading.Thread(target=self.update_compatibility, args=(sender,), daemon=True).start()
+        logging.info(f"Combo selection changed: {event.widget}")
+        self.update_compatibility(event.widget)
 
     def update_compatibility(self, sender):
         if sender == self.omnetpp_combo:
@@ -158,11 +156,9 @@ class OppEnvGUI:
             self.update_omnetpp_and_other_tools()
         else:  # other_tools_combo
             self.update_omnetpp_and_inet()
-        
-        self.check_install_button()
 
     def update_inet_and_other_tools(self):
-        omnetpp_version = self.omnetpp_combo.get()
+        omnetpp_version = f"omnetpp-{self.omnetpp_combo.get()}"
         compatible_options = self.get_compatible_options(omnetpp_version)
         
         self.queue.put(("update_combo", self.inet_combo, ["NONE"] + compatible_options['inet']))
@@ -174,7 +170,7 @@ class OppEnvGUI:
             self.populate_dropdowns()
             return
         
-        compatible_options = self.get_compatible_options(inet_version)
+        compatible_options = self.get_compatible_options(f"inet-{inet_version}")
         
         self.queue.put(("update_combo", self.omnetpp_combo, compatible_options['omnetpp']))
         self.queue.put(("update_combo", self.other_tools_combo, ["NONE"] + compatible_options['other_tools']))
@@ -193,23 +189,34 @@ class OppEnvGUI:
     def get_compatible_options(self, selected_option):
         try:
             result = subprocess.run(['opp_env', 'info', selected_option], capture_output=True, text=True)
+            print(f"Output of 'opp_env info {selected_option}':")
+            print(result.stdout)
+            sys.stdout.flush()
+
             lines = result.stdout.split('\n')
             
             omnetpp_versions = []
             inet_versions = []
             other_tools = []
             
+            requires_section = False
             for line in lines:
-                if line.startswith('- omnetpp:'):
-                    omnetpp_versions = line.split(':')[1].strip().split(' / ')
-                elif line.startswith('- inet:'):
-                    inet_versions = line.split(':')[1].strip().split(' / ')
-                elif line.startswith('- '):
-                    tool_info = line.split(':')
-                    tool = tool_info[0].strip('- ')
-                    versions = tool_info[1].strip().split(' / ')
-                    for version in versions:
-                        other_tools.append(f"{tool}-{version}")
+                if line.startswith("Requires:"):
+                    requires_section = True
+                    continue
+                if requires_section:
+                    if line.startswith("- omnetpp:"):
+                        omnetpp_versions = [v for v in line.split(':')[1].strip().split(' / ') if v != 'git']
+                    elif line.startswith("- inet:"):
+                        inet_versions = [v for v in line.split(':')[1].strip().split(' / ') if v != 'git']
+                    elif line.startswith("- "):
+                        tool_info = line.split(':')
+                        tool = tool_info[0].strip('- ')
+                        versions = [v for v in tool_info[1].strip().split(' / ') if v != 'git']
+                        for version in versions:
+                            other_tools.append(f"{tool}-{version}")
+                    else:
+                        break  # End of Requires section
             
             return {
                 'omnetpp': omnetpp_versions,
@@ -220,16 +227,6 @@ class OppEnvGUI:
             logging.exception(f"Error getting compatible options for {selected_option}")
             self.master.after(0, lambda: messagebox.showerror("Error", f"Error getting compatible options: {e}"))
             return {'omnetpp': [], 'inet': [], 'other_tools': []}
-
-    def check_install_button(self):
-        omnetpp_selected = self.omnetpp_combo.get() != ""
-        inet_valid = self.inet_combo.get() in self.inet_combo['values']
-        other_tools_valid = self.other_tools_combo.get() in self.other_tools_combo['values']
-        
-        if omnetpp_selected and inet_valid and other_tools_valid and self.install_dir:
-            self.queue.put(("enable_install_button",))
-        else:
-            self.queue.put(("disable_install_button",))
 
     def change_directory(self):
         if not self.install_dir:
@@ -250,24 +247,26 @@ class OppEnvGUI:
             sys.stdout.flush()
 
     def install_selected(self):
-        current_time = time.time()
-        if current_time - self.last_click_time < self.click_cooldown:
-            logging.info("Click ignored due to cooldown")
+        logging.info("Install button clicked")
+        if not self.install_dir:
+            messagebox.showwarning("Warning", "Please select an installation directory.")
             return
-        self.last_click_time = current_time
+
+        omnetpp_version = self.omnetpp_combo.get()
+        if not omnetpp_version:
+            messagebox.showwarning("Warning", "Please select an OMNeT++ version.")
+            return
 
         if not self.change_directory():
             return
 
-        omnetpp_version = f"omnetpp-{self.omnetpp_combo.get()}"
+        command = ['opp_env', 'install', f"omnetpp-{omnetpp_version}"]
+        
         inet_version = self.inet_combo.get()
-        other_tool = self.other_tools_combo.get()
-
-        command = ['opp_env', 'install', omnetpp_version]
-        
         if inet_version != "NONE":
-            command.append(inet_version)
+            command.append(f"inet-{inet_version}")
         
+        other_tool = self.other_tools_combo.get()
         if other_tool != "NONE":
             command.append(other_tool)
 
@@ -287,6 +286,12 @@ class OppEnvGUI:
         except Exception as e:
             logging.exception("Error during installation")
             self.master.after(0, lambda: messagebox.showerror("Error", f"Error during installation: {e}"))
+
+    def reset_dropdowns(self):
+        logging.info("Reset button clicked")
+        self.populate_dropdowns()
+        self.install_dir = ""
+        self.dir_label.config(text="Install Directory:")
 
 if __name__ == "__main__":
     root = tk.Tk()
