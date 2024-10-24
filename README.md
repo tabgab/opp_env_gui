@@ -1,17 +1,20 @@
 # OPP_ENV_GUI
 
-OPP_ENV_GUI is a graphical user interface for the opp_env command line tool. It provides an easy-to-use interface for installing OMNeT++, INET, and other tools with compatible versions.
+OPP_ENV_GUI is a graphical user interface for the opp_env command line tool. 
+It provides an easy-to-use interface for installing OMNeT++, INET, and other tools with compatible versions.
 
 ## Features
 
 - Automatically populates dropdown menus with available versions from opp_env.
 - Updates compatible versions in other dropdowns based on the selected version in one dropdown.
-- Provides visual feedback on compatibility and installation status.
 - Allows selection of installation directory.
 - Executes opp_env install command with selected options.
 - Supports "NONE" option for INET and Other Tools.
 - Handles different output formats from the opp_env command.
 - Includes error handling and logging for troubleshooting.
+- Provides warning messages if trying to install without all necessary selections.
+- Use the Reset button to go back to the beginning of the selection process, and have access to all
+  possible dropdown options.
 
 ## Prerequisites
 
@@ -29,16 +32,20 @@ OPP_ENV_GUI is a graphical user interface for the opp_env command line tool. It 
 1. Run the application:
 
 ```
-python main.py
+python opp_env_gui.py
 ```
 
 2. Select the versions of OMNeT++, INET, and other tools you want to install from the dropdown menus.
-   - OMNeT++ version is required and defaults to the latest version.
+   - OMNeT++ version is required.
    - INET version and Other Tools can be set to "NONE" if not needed.
+   - If the user chooses smething from the Other Tools dropdown, the other options will be adjusted automatically, as needed.
+     While the most recent release of the requirements will be selected automatically, any still valid options may be selected manually.
 
 3. Choose an installation directory by clicking the "Browse" button.
 
-4. Click the "INSTALL SELECTED" button to start the installation process. The button will be enabled only when all selections are valid and an installation directory is specified.
+4. Click the "INSTALL SELECTED" button to start the installation process. The button is always enabled, but the application will show warning messages if:
+   - No installation directory is selected.
+   - No OMNeT++ version is selected.
 
 ## Troubleshooting
 
