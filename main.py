@@ -246,6 +246,20 @@ class OppEnvGUI:
             sys.stdout.write(line)
             sys.stdout.flush()
 
+    def initialize_opp_env(self):
+        logging.info("Initializing opp_env")
+        try:
+            result = subprocess.run(['opp_env', 'init'], capture_output=True, text=True)
+            if result.returncode != 0:
+                logging.error(f"Error executing 'opp_env init': {result.stderr}")
+                raise Exception(f"Error executing 'opp_env init': {result.stderr}")
+            logging.info("opp_env initialized successfully")
+            return True
+        except Exception as e:
+            logging.exception("Error during opp_env initialization")
+            self.master.after(0, lambda: messagebox.showerror("Error", f"Error during opp_env initialization: {e}"))
+            return False
+
     def install_selected(self):
         logging.info("Install button clicked")
         if not self.install_dir:
@@ -258,6 +272,9 @@ class OppEnvGUI:
             return
 
         if not self.change_directory():
+            return
+
+        if not self.initialize_opp_env():
             return
 
         command = ['opp_env', 'install', f"omnetpp-{omnetpp_version}"]
