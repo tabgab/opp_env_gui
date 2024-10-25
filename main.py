@@ -7,8 +7,42 @@ import sys
 import threading
 import queue
 import re
+import webbrowser
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s: %(message)s')
+
+def check_opp_env():
+    try:
+        subprocess.run(['opp_env', '--version'], capture_output=True, text=True, check=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+    except FileNotFoundError:
+        return False
+
+def show_opp_env_error():
+    error_window = tk.Tk()
+    error_window.title("Error: opp_env not found")
+    error_window.geometry("400x150")
+
+    message = "Could not find opp_env, this tool needs opp_env to be installed on your system to function."
+    tk.Label(error_window, text=message, wraplength=350, justify="center").pack(pady=20)
+
+    def exit_program():
+        error_window.destroy()
+        sys.exit()
+
+    def visit_github():
+        webbrowser.open("https://github.com/omnetpp/opp_env")
+        exit_program()
+
+    button_frame = tk.Frame(error_window)
+    button_frame.pack(pady=10)
+
+    tk.Button(button_frame, text="Exit", command=exit_program).pack(side=tk.LEFT, padx=10)
+    tk.Button(button_frame, text="Visit opp_env Github Page", command=visit_github).pack(side=tk.LEFT, padx=10)
+
+    error_window.mainloop()
 
 class OppEnvGUI:
     def __init__(self, master):
@@ -311,6 +345,9 @@ class OppEnvGUI:
         self.dir_label.config(text="Install Directory:")
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = OppEnvGUI(root)
-    root.mainloop()
+    if not check_opp_env():
+        show_opp_env_error()
+    else:
+        root = tk.Tk()
+        app = OppEnvGUI(root)
+        root.mainloop()
