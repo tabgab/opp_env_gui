@@ -8,8 +8,26 @@ import threading
 import queue
 import re
 import webbrowser
+import platform
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s: %(message)s')
+
+def get_os_type():
+    system = platform.system().lower()
+    if system == 'darwin':
+        return 'macos'
+    elif system == 'linux':
+        return 'linux'
+    elif system == 'windows':
+        # Check if running in WSL
+        try:
+            with open('/proc/version', 'r') as f:
+                if 'microsoft' in f.read().lower():
+                    return 'wsl'
+        except:
+            pass
+        return 'windows'
+    return 'unknown'
 
 def check_opp_env():
     try:
@@ -20,27 +38,125 @@ def check_opp_env():
     except FileNotFoundError:
         return False
 
+def install_nix():
+    os_type = get_os_type()
+    if os_type == 'macos':
+        return subprocess.run(['sh', '<(curl -L https://nixos.org/nix/install)'], shell=True)
+    elif os_type == 'linux':
+        return subprocess.run(['sh', '<(curl -L https://nixos.org/nix/install)'], shell=True)
+    elif os_type == 'wsl':
+        return subprocess.run(['sh', '<(curl -L https://nixos.org/nix/install)'], shell=True)
+    else:
+        raise Exception("Unsupported operating system")
+
+def install_python_and_pip():
+    os_type = get_os_type()
+    if os_type == 'macos':
+        return subprocess.run(['brew', 'install', 'python3'])
+    elif os_type in ['linux', 'wsl']:
+        return subprocess.run(['sudo', 'apt-get', 'update', '&&', 'sudo', 'apt-get', 'install', '-y', 'python3', 'python3-pip'], shell=True)
+    else:
+        raise Exception("Unsupported operating system")
+
+def install_opp_env():
+    try:
+        subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'], check=True)
+        subprocess.run([sys.executable, '-m', 'pip', 'install', 'opp-env'], check=True)
+        return True
+    except subprocess.CalledProcessError:
+        try:
+            # Try with --break-system-packages for newer Ubuntu/Debian systems
+            subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip', '--break-system-packages'], check=True)
+            subprocess.run([sys.executable, '-m', 'pip', 'install', 'opp-env', '--break-system-packages'], check=True)
+            return True
+        except:
+            return False
+
 def show_opp_env_error():
     error_window = tk.Tk()
     error_window.title("Error: opp_env not found")
-    error_window.geometry("400x150")
+    error_window.geometry("600x400")
 
-    message = "Could not find opp_env, this tool needs opp_env to be installed on your system to function."
-    tk.Label(error_window, text=message, wraplength=350, justify="center").pack(pady=20)
+    os_type = get_os_type()
+    
+    message = "Could not find opp_env. This tool requires opp_env to function."
+    tk.Label(error_window, text=message, wraplength=550, justify="center").pack(pady=10)
+
+    # OS-specific instructions
+    if os_type == 'macos':
+        instructions = """
+MacOS Installation Steps:
+1. Install Nix package manager
+2. Add the following to your ~/.zshrc or ~/.bashrc:
+   if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
+     . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
+   fi
+3. Install Python3 and pip
+4. Install opp_env using pip
+"""
+    elif os_type == 'linux':
+        instructions = """
+Linux Installation Steps:
+1. Install Nix package manager
+2. Install Python3 and pip using your package manager
+3. Install opp_env using pip
+"""
+    elif os_type == 'wsl':
+        instructions = """
+Windows (WSL) Installation Steps:
+1. Ensure you're using WSL2
+2. Install Nix package manager
+3. Install Python3 and pip
+4. Install opp_env using pip
+
+Alternatively, you can use our pre-packaged WSL image:
+curl.exe -L https://github.com/omnetpp/opp_env/releases/download/wsl/opp_env-wsl.tar.gz | wsl --import opp_env .\\opp_env-wsl -
+"""
+    else:
+        instructions = "Unsupported operating system detected. Please visit the opp_env documentation for installation instructions."
+
+    text_widget = tk.Text(error_window, wrap=tk.WORD, width=70, height=12)
+    text_widget.insert(tk.END, instructions)
+    text_widget.config(state=tk.DISABLED)
+    text_widget.pack(pady=10, padx=10)
+
+    button_frame = tk.Frame(error_window)
+    button_frame.pack(pady=10)
 
     def exit_program():
         error_window.destroy()
         sys.exit()
 
+    def install_dependencies():
+        try:
+            # Install Nix
+            result = install_nix()
+            if result.returncode != 0:
+                raise Exception("Failed to install Nix")
+
+            # Install Python and pip
+            result = install_python_and_pip()
+            if result.returncode != 0:
+                raise Exception("Failed to install Python and pip")
+
+            # Install opp_env
+            if not install_opp_env():
+                raise Exception("Failed to install opp_env")
+
+            messagebox.showinfo("Success", "Dependencies installed successfully! Please restart the application.")
+            exit_program()
+        except Exception as e:
+            messagebox.showerror("Error", f"Installation failed: {str(e)}\nPlease try manual installation.")
+
     def visit_github():
         webbrowser.open("https://github.com/omnetpp/opp_env")
         exit_program()
 
-    button_frame = tk.Frame(error_window)
-    button_frame.pack(pady=10)
-
+    if os_type in ['macos', 'linux', 'wsl']:
+        tk.Button(button_frame, text="Install Dependencies", command=install_dependencies).pack(side=tk.LEFT, padx=10)
+    
+    tk.Button(button_frame, text="Visit opp_env Github", command=visit_github).pack(side=tk.LEFT, padx=10)
     tk.Button(button_frame, text="Exit", command=exit_program).pack(side=tk.LEFT, padx=10)
-    tk.Button(button_frame, text="Visit opp_env Github Page", command=visit_github).pack(side=tk.LEFT, padx=10)
 
     error_window.mainloop()
 
